@@ -1,69 +1,91 @@
-import Image from "next/image";
+import { createClient } from '@/utils/supabase/server'
+import { adjustStock } from '@/app/actions'
+import { TransferForm } from '@/components/TransferForm'
 
-export default function Home() {
+type StockItem = {
+  id: string
+  quantity: number
+  warehouses: { id: string; name: string; location: string } | null
+  products: { id: string; sku: string; name: string; price: number } | null
+}
+
+export default async function HomePage() {
+  const supabase = await createClient()
+
+  // Fetch stock items
+  const { data: stockItems, error } = await supabase
+    .from('warehouse_stock')
+    .select(`
+      id,
+      quantity,
+      warehouses ( id, name, location ),
+      products ( id, sku, name, price )
+    `)
+
+  // Fetch master lists for dropdowns
+  const { data: warehouses } = await supabase.from('warehouses').select('*')
+  const { data: products } = await supabase.from('products').select('*')
+
+  if (error) {
+    return <div className="p-8 text-red-500">Error: {error.message}</div>
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+    <main className="p-8 max-w-4xl mx-auto font-sans">
+      <h1 className="text-3xl font-bold mb-6 text-gray-900">Multi-Warehouse Inventory Tracker</h1>
+      
+      {/* Transfer Form Component */}
+      <TransferForm warehouses={warehouses || []} products={products || []} />
+
+      <h2 className="text-2xl font-semibold mb-4 text-gray-900">Current Inventory Stock</h2>
+      <div className="grid gap-4 md:grid-cols-2">
+        {stockItems?.map((item: StockItem) => (
+          <div key={item.id} className="border p-5 rounded-lg shadow-sm bg-white flex flex-col justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900">{item.products?.name}</h3>
+              <p className="text-sm text-gray-500">SKU: {item.products?.sku}</p>
+              <p className="mt-2 text-gray-700">
+                <strong>Warehouse:</strong> {item.warehouses?.name} ({item.warehouses?.location})
+              </p>
+              <p className="mt-1 text-lg font-bold text-blue-600">
+                Quantity: {item.quantity} units
+              </p>
+            </div>
+
+            {/* Quick Adjustment Action Forms */}
+            <div className="mt-4 pt-3 border-t flex items-center justify-between">
+              <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Quick Adjust</span>
+              <div className="flex gap-2">
+                <form action={async () => {
+                  'use server'
+                  await adjustStock(item.id, -1)
+                }}>
+                  <button 
+                    type="submit"
+                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-bold rounded transition"
+                    title="Decrease quantity by 1"
+                  >
+                    -
+                  </button>
+                </form>
+
+                <form action={async () => {
+                  'use server'
+                  await adjustStock(item.id, 1)
+                }}>
+                  <button 
+                    type="submit"
+                    className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-bold rounded transition"
+                    title="Increase quantity by 1"
+                  >
+                    +
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
+  )
 }
